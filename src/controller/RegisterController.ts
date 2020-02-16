@@ -4,6 +4,7 @@ import { Student } from "../entity/Student";
 import { Teacher } from "../entity/Teacher";
 import { Notification } from "../entity/Notification";
 import { Register } from "../entity/Register";
+import { StudentNotification } from "../entity/StudentNotification";
 
 
 // export class RegisterController {
@@ -12,6 +13,7 @@ module.exports = class RegisterController {
     private teacherRepository = getRepository(Teacher);
     private notificationRepository = getRepository(Notification);
     private registerRepository = getRepository(Register);
+    private studNotifiRepository = getRepository(StudentNotification);
 
     async commonstudents(request: Request, response: Response, next: NextFunction) {
         let teacherLength;
@@ -21,23 +23,27 @@ module.exports = class RegisterController {
         else {
             teacherLength = request.query.teacher.length
         }
-        //         SELECT * from classRegistration.student s
+        // SELECT * from classRegistration.student s
         // inner join classRegistration.register a on s.id = a.studentId
         // inner join classRegistration.teacher t on t.id = a.teacherId
         // WHERE t.emailId IN ("teacher1@gmail.com","teacher2@gmail.com") 
         // GROUP BY a.studentId 
         // HAVING COUNT(DISTINCT a.teacherId)=2;
-        let a = await this.studentRepository
+        let result = await this.studentRepository
             .createQueryBuilder("student")
             .innerJoinAndSelect("register", "a", "student.id = a.studentId")
             .innerJoinAndSelect("teacher", "t", "t.id = a.teacherId")
             .where("t.emailId IN (:q)", { q: request.query.teacher })
             .groupBy("a.studentId")
             .having("COUNT(DISTINCT a.teacherId)= :w", { w: teacherLength })
-            .select("student.emailId")
-            .getMany();
-
-        return a
+            .select("student.emailId as emailId")
+            .getRawMany();
+        let emailIds = [];
+        result.map(s => {
+            emailIds.push((s.emailId))
+        })
+        return { students: emailIds };
+        // return response.send({ students: emailIds });
     }
 
     async register(request: Request, response: Response, next: NextFunction) {
@@ -56,7 +62,6 @@ module.exports = class RegisterController {
             try {
                 if (request.body.students[i] != '') {
                     let studentResult = await this.studentRepository.findOne({ emailId: request.body.students[i] });
-                    console.log("studentResult:: ", studentResult)
                     if (!studentResult) {
                         let student = new Student();
                         student.emailId = request.body.students[i];
@@ -70,14 +75,13 @@ module.exports = class RegisterController {
                         register.teacherId = teacherResult.id;
                         await this.registerRepository.save(register);
                     }
-                    return response.status = 200;
-
                 }
             }
             catch (e) {
                 return response.status = 404;
             }
         }
+        return response.status = 200;
     }
 
     async suspend(request: Request, response: Response, next: NextFunction) {
@@ -106,6 +110,7 @@ module.exports = class RegisterController {
         let students = request.body.notification.split(" ");
         let studentFinal = [];
         let notificationString = "";
+        let finalNotification;
         students.forEach(student => {
             if (student.includes("@", 1)) {
                 studentFinal.push(student.slice(1, student.length))
@@ -137,33 +142,42 @@ module.exports = class RegisterController {
         if (!teacher) {
             return response.status(200).send("Teacher or student are invalid")
         }
+        if (teacher) {
+            let notification = new Notification();
+            notification.notification = notificationString;
+            notification.teacherId = teacher.id;
+            finalNotification = await this.notificationRepository.save(notification);
+        }
+
         if (studentFinal.length > 0) {
-            studentFinal.forEach(async studentNotiFinal => {
-                let student = await this.studentRepository.findOne({ emailId: studentNotiFinal, suspended: 0 });
-                if (student && teacher) {
-                    let notification = new Notification();
-                    notification.notification = notificationString;
-                    notification.teacherId = teacher.id;
-                    notification.studentId = student.id;
-                    let finalNotification = await this.notificationRepository.save(notification);
-                    // select s.emailId from classRegistration.notification n
-                    //  inner join classRegistration.student s 
-                    // on s.id = n.studentId  order by n.createdAt DESC limit 5;
-                    let notificationRepo = await this.notificationRepository
-                        .createQueryBuilder("n")
-                        .innerJoinAndSelect("student", "s", "s.id = n.studentId")
-                        .select("s.id as id , s.emailId as receipents")
-                        .orderBy("n.createdAt", 'DESC')
-                        .limit(studentFinal.length)
-                        .getRawMany();
-                    return response.send({ reciepients: notificationRepo })
+            await Promise.all(
+                studentFinal.map(async studentNotiFinal => {
+                    let student = await this.studentRepository.findOne({ emailId: studentNotiFinal, suspended: 0 });
+                    if (student && teacher) {
+                        let studentNotification = new StudentNotification();
+                        studentNotification.notificationId = finalNotification.id;
+                        studentNotification.studentId = student.id;
+                        let finalStudNotification = await this.studNotifiRepository.save(studentNotification);
+                    }
 
+                    //  select s.emailId from classRegistration.student_notification n
+                    // inner join classRegistration.student s 
+                    // on s.id = n.studentId  where n.notificationId = 205;
 
+                })
+            );
+            let notificationRepo = await this.studNotifiRepository
+                .createQueryBuilder("n")
+                .innerJoinAndSelect("student", "s", "s.id = n.studentId")
+                .where("n.notificationId = :notificationId", { notificationId: finalNotification.id })
+                .select("s.emailId as emailId")
+                .getRawMany();
+            let emailIds = [];
+            notificationRepo.map(s => {
+                emailIds.push((s.emailId))
+            })
+            return { reciepients: emailIds };
 
-                }
-
-
-            });
         }
         else {
             return response.status(200).send("Teacher or student are invalid")

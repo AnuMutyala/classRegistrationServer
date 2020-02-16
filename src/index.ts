@@ -6,7 +6,6 @@ import {Request, Response} from "express";
 import {Routes} from "./routes";
 import * as cors from "cors";
 
-
 createConnection().then(async connection => {
 
     // create express app
@@ -14,7 +13,6 @@ createConnection().then(async connection => {
     app.use(bodyParser.json());
     app.use(cors());
     app.listen(4000);
-    // module.exports = app.listen(4000);
 
     // register express routes from defined application routes
     Routes.forEach(route => {
@@ -22,7 +20,6 @@ createConnection().then(async connection => {
             const result = (new (route.controller as any))[route.action](req, res, next);
             if (result instanceof Promise) {
                 result.then(result => result !== null && result !== undefined ? res.send(result) : undefined);
-
             } else if (result !== null && result !== undefined) {
                 res.json(result);
             }

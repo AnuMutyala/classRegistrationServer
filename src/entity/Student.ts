@@ -1,7 +1,5 @@
-import {Entity, PrimaryGeneratedColumn,Index, Column,ManyToMany, JoinTable} from "typeorm";
-import { Teacher } from "./Teacher";
+import {Entity, PrimaryGeneratedColumn,Index, Column} from "typeorm";
 
-// @Index(["emailId"], {unique: true})
 @Entity()
 export class Student {
 
@@ -14,9 +12,5 @@ export class Student {
 
     @Column({default: 0})
     suspended: number
-
-    // @ManyToMany(type => Teacher, teacher => teacher.id)
-    // @JoinTable()
-    // teachers: Teacher[];
 
 }
